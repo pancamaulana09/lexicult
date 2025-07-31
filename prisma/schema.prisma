@@ -1,0 +1,582 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
+// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
+
+generator client {
+  provider = "prisma-client-js"
+  output   = "../lib/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ================================
+// CORE USER MODEL
+// ================================
+model User {
+  id                 String     @id @default(uuid())
+  email              String     @unique
+  name               String
+  avatarUrl          String?
+  createdAt          DateTime   @default(now())
+  updatedAt          DateTime   @updatedAt
+
+  // Story-related relationships
+  bookmarks          Bookmark[]
+  progressRecords    StoryProgress[]
+  
+  // Vocabulary-related relationships
+  vocabularyProgress VocabularyProgress[]
+  learningSessions   LearningSession[]
+  userWords          UserWord[]
+  
+  // Practice-related relationships
+  practiceProgress   PracticeProgress[]
+  practiceSessions   PracticeSession[]
+  practiceAnswers    PracticeAnswer[]
+  
+  // Stats
+  learningStats      LearningStats?
+
+  @@map("users")
+}
+
+// ================================
+// STORY MODELS (EXISTING)
+// ================================
+model Story {
+  id                 String     @id @default(uuid())
+  title              String
+  description        String
+  level              StoryLevel
+  duration           Int
+  category           String
+  thumbnail          String
+  rating             Float      @default(0.0)
+  totalReads         Int        @default(0)
+  audioAvailable     Boolean    @default(false)
+  language           Language
+  publishedDate      DateTime
+  tags               String[]
+
+  bookmarks          Bookmark[]
+  progressRecords    StoryProgress[]
+
+  @@index([level, category])
+  @@index([language])
+  @@index([publishedDate])
+  @@map("stories")
+}
+
+model Bookmark {
+  id        String   @id @default(uuid())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId    String
+  story     Story    @relation(fields: [storyId], references: [id], onDelete: Cascade)
+  storyId   String
+  createdAt DateTime @default(now())
+
+  @@unique([userId, storyId])
+  @@map("bookmarks")
+}
+
+model StoryProgress {
+  id          String   @id @default(uuid())
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId      String
+  story       Story    @relation(fields: [storyId], references: [id], onDelete: Cascade)
+  storyId     String
+  progress    Int      @default(0)
+  isCompleted Boolean  @default(false)
+  updatedAt   DateTime @updatedAt
+
+  @@unique([userId, storyId])
+  @@map("story_progress")
+}
+
+// ================================
+// VOCABULARY MODELS
+// ================================
+model VocabularySet {
+  id              String    @id @default(uuid())
+  title           String
+  description     String
+  category        String
+  level           SetLevel
+  estimatedTime   Int       // in minutes
+  thumbnail       String?
+  author          String
+  rating          Float     @default(0.0)
+  totalRatings    Int       @default(0)
+  isPublished     Boolean   @default(false)
+  isPremium       Boolean   @default(false)
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  // Relationships
+  words           VocabularyWord[]
+  userProgress    VocabularyProgress[]
+  learningSessions LearningSession[]
+
+  @@index([category, level])
+  @@index([isPublished, isPremium])
+  @@index([rating])
+  @@map("vocabulary_sets")
+}
+
+model VocabularyWord {
+  id              String       @id @default(uuid())
+  word            String
+  translation     String
+  pronunciation   String?
+  partOfSpeech    PartOfSpeech
+  difficulty      Difficulty
+  definition      String
+  examples        String[]
+  synonyms        String[]
+  antonyms        String[]
+  audioUrl        String?
+  imageUrl        String?
+  tags            String[]
+  createdAt       DateTime     @default(now())
+
+  // Relationships
+  vocabularySet   VocabularySet @relation(fields: [setId], references: [id], onDelete: Cascade)
+  setId           String
+  userWords       UserWord[]
+  sessionAnswers  SessionAnswer[]
+
+  @@index([setId])
+  @@index([difficulty])
+  @@index([partOfSpeech])
+  @@map("vocabulary_words")
+}
+
+model UserWord {
+  id              String    @id @default(uuid())
+  user            User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId          String
+  word            VocabularyWord @relation(fields: [wordId], references: [id], onDelete: Cascade)
+  wordId          String
+  
+  // Learning progress
+  isFavorite      Boolean   @default(false)
+  isLearned       Boolean   @default(false)
+  masteryLevel    Int       @default(0) // 0-100
+  timesSeen       Int       @default(0)
+  timesCorrect    Int       @default(0)
+  lastReviewed    DateTime?
+  nextReview      DateTime? // Spaced repetition
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  @@unique([userId, wordId])
+  @@index([userId, isLearned])
+  @@index([userId, isFavorite])
+  @@index([nextReview])
+  @@map("user_words")
+}
+
+model VocabularyProgress {
+  id              String         @id @default(uuid())
+  user            User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId          String
+  vocabularySet   VocabularySet  @relation(fields: [setId], references: [id], onDelete: Cascade)
+  setId           String
+  
+  // Progress tracking
+  completedWords  Int            @default(0)
+  totalWords      Int            @default(0)
+  accuracyRate    Float          @default(0.0)
+  timeSpent       Int            @default(0) // in minutes
+  isCompleted     Boolean        @default(false)
+  lastStudied     DateTime?
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+
+  @@unique([userId, setId])
+  @@index([userId, isCompleted])
+  @@map("vocabulary_progress")
+}
+
+// ================================
+// LEARNING SESSION MODELS
+// ================================
+model LearningSession {
+  id              String         @id @default(uuid())
+  user            User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId          String
+  vocabularySet   VocabularySet  @relation(fields: [setId], references: [id], onDelete: Cascade)
+  setId           String
+  
+  // Session details
+  mode            SessionMode
+  totalWords      Int
+  correctAnswers  Int            @default(0)
+  completedWords  Int            @default(0)
+  accuracyRate    Float          @default(0.0)
+  timeSpent       Int            @default(0) // in seconds
+  isCompleted     Boolean        @default(false)
+  startedAt       DateTime       @default(now())
+  completedAt     DateTime?
+
+  // Relationships
+  answers         SessionAnswer[]
+
+  @@index([userId, isCompleted])
+  @@index([setId])
+  @@index([startedAt])
+  @@map("learning_sessions")
+}
+
+model SessionAnswer {
+  id              String          @id @default(uuid())
+  session         LearningSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  sessionId       String
+  word            VocabularyWord  @relation(fields: [wordId], references: [id], onDelete: Cascade)
+  wordId          String
+  
+  // Answer details
+  userAnswer      String?
+  correctAnswer   String
+  isCorrect       Boolean
+  timeSpent       Int             @default(0) // in seconds
+  answeredAt      DateTime        @default(now())
+
+  @@index([sessionId])
+  @@index([wordId])
+  @@map("session_answers")
+}
+
+// ================================
+// PRACTICE MODULE MODELS
+// ================================
+model PracticeModule {
+  id              String    @id @default(uuid())
+  title           String
+  description     String
+  type            PracticeType
+  category        String
+  level           SetLevel
+  duration        Int       // in minutes
+  totalExercises  Int
+  thumbnail       String?
+  author          String
+  rating          Float     @default(0.0)
+  totalRatings    Int       @default(0)
+  isPublished     Boolean   @default(false)
+  isPremium       Boolean   @default(false)
+  tags            String[]
+  skills          String[]
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  // Relationships
+  exercises       PracticeExercise[]
+  userProgress    PracticeProgress[]
+  practiceSessions PracticeSession[]
+
+  @@index([type, category])
+  @@index([level, isPublished])
+  @@index([rating])
+  @@map("practice_modules")
+}
+
+model PracticeExercise {
+  id              String        @id @default(uuid())
+  practiceModule  PracticeModule @relation(fields: [moduleId], references: [id], onDelete: Cascade)
+  moduleId        String
+  
+  // Exercise details
+  type            ExerciseType
+  question        String
+  options         String[]      // For multiple choice
+  correctAnswer   String
+  explanation     String
+  audioUrl        String?
+  imageUrl        String?
+  difficulty      Difficulty
+  points          Int           @default(10)
+  orderIndex      Int           // Order within module
+  
+  // Relationships
+  answers         PracticeAnswer[]
+
+  @@index([moduleId, orderIndex])
+  @@index([type, difficulty])
+  @@map("practice_exercises")
+}
+
+model PracticeSession {
+  id              String         @id @default(uuid())
+  user            User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId          String
+  practiceModule  PracticeModule @relation(fields: [moduleId], references: [id], onDelete: Cascade)
+  moduleId        String
+  
+  // Session details
+  mode            PracticeMode
+  totalExercises  Int
+  completedExercises Int         @default(0)
+  correctAnswers  Int            @default(0)
+  score           Int            @default(0)
+  accuracyRate    Float          @default(0.0)
+  timeSpent       Int            @default(0) // in seconds
+  isCompleted     Boolean        @default(false)
+  startedAt       DateTime       @default(now())
+  completedAt     DateTime?
+
+  // Relationships
+  answers         PracticeAnswer[]
+
+  @@index([userId, isCompleted])
+  @@index([moduleId])
+  @@index([startedAt])
+  @@map("practice_sessions")
+}
+
+model PracticeAnswer {
+  id              String          @id @default(uuid())
+  session         PracticeSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  sessionId       String
+  exercise        PracticeExercise @relation(fields: [exerciseId], references: [id], onDelete: Cascade)
+  exerciseId      String
+  user            User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId          String
+  
+  // Answer details
+  userAnswer      String?
+  isCorrect       Boolean
+  timeSpent       Int             @default(0) // in seconds
+  pointsEarned    Int             @default(0)
+  answeredAt      DateTime        @default(now())
+
+  @@index([sessionId])
+  @@index([exerciseId])
+  @@index([userId])
+  @@map("practice_answers")
+}
+
+model PracticeProgress {
+  id                  String         @id @default(uuid())
+  user                User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId              String
+  practiceModule      PracticeModule @relation(fields: [moduleId], references: [id], onDelete: Cascade)
+  moduleId            String
+  
+  // Progress tracking
+  completedExercises  Int            @default(0)
+  totalExercises      Int            @default(0)
+  bestScore           Int            @default(0)
+  totalAttempts       Int            @default(0)
+  averageAccuracy     Float          @default(0.0)
+  totalTimeSpent      Int            @default(0) // in minutes
+  isCompleted         Boolean        @default(false)
+  lastAttempted       DateTime?
+  createdAt           DateTime       @default(now())
+  updatedAt           DateTime       @updatedAt
+
+  @@unique([userId, moduleId])
+  @@index([userId, isCompleted])
+  @@map("practice_progress")
+}
+
+// ================================
+// ENHANCED LEARNING STATS
+// ================================
+model LearningStats {
+  id                  String   @id @default(uuid())
+  user                User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId              String   @unique
+  
+  // Story stats (existing)
+  storiesRead         Int      @default(0)
+  totalReadingTime    Int      @default(0) // in minutes
+  currentReadingStreak Int     @default(0)
+  
+  // Vocabulary stats
+  vocabularyLearned   Int      @default(0)
+  vocabularySetsCompleted Int  @default(0)
+  totalVocabularyTime Int      @default(0) // in minutes
+  currentVocabStreak  Int      @default(0)
+  weeklyVocabGoal     Int      @default(50)
+  weeklyVocabProgress Int      @default(0)
+  
+  // Practice stats (new)
+  practiceSessionsCompleted Int @default(0)
+  totalPracticeTime     Int      @default(0) // in minutes
+  averagePracticeAccuracy Float  @default(0.0)
+  currentPracticeStreak Int      @default(0)
+  totalPointsEarned     Int      @default(0)
+  currentRank           String   @default("Beginner")
+  
+  // Overall stats
+  comprehensionScore  Int      @default(0)
+  overallAccuracy     Float    @default(0.0)
+  masteryScore        Int      @default(0)
+  lastActiveDate      DateTime?
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  @@map("learning_stats")
+}
+
+// ================================
+// DAILY LEARNING TRACKING
+// ================================
+model DailyLearning {
+  id                  String   @id @default(uuid())
+  userId              String
+  date                DateTime @db.Date
+  
+  // Daily vocabulary metrics
+  wordsLearned        Int      @default(0)
+  vocabularyTimeSpent Int      @default(0) // in minutes
+  vocabularySessions  Int      @default(0)
+  vocabularyAccuracy  Float    @default(0.0)
+  
+  // Daily story metrics
+  storiesRead         Int      @default(0)
+  readingTime         Int      @default(0) // in minutes
+  
+  // Daily practice metrics (new)
+  practiceSessionsCompleted Int @default(0)
+  practiceTimeSpent     Int      @default(0) // in minutes
+  practiceAccuracy      Float    @default(0.0)
+  practicePointsEarned  Int      @default(0)
+  
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  @@unique([userId, date])
+  @@index([userId, date])
+  @@map("daily_learning")
+}
+
+// ================================
+// ACHIEVEMENTS & GAMIFICATION
+// ================================
+model Achievement {
+  id              String    @id @default(uuid())
+  name            String
+  description     String
+  type            AchievementType
+  category        String
+  iconUrl         String?
+  condition       Json      // Flexible condition storage
+  points          Int       @default(0)
+  isActive        Boolean   @default(true)
+  createdAt       DateTime  @default(now())
+
+  // Relationships
+  userAchievements UserAchievement[]
+
+  @@index([type, category])
+  @@map("achievements")
+}
+
+model UserAchievement {
+  id              String      @id @default(uuid())
+  userId          String
+  achievement     Achievement @relation(fields: [achievementId], references: [id], onDelete: Cascade)
+  achievementId   String
+  unlockedAt      DateTime    @default(now())
+  progress        Int         @default(0) // For progressive achievements
+  isCompleted     Boolean     @default(true)
+
+  @@unique([userId, achievementId])
+  @@index([userId])
+  @@map("user_achievements")
+}
+
+// ================================
+// ENUMS
+// ================================
+enum StoryLevel {
+  Beginner
+  Intermediate
+  Advanced
+}
+
+enum Language {
+  Indonesian
+  English
+  German
+}
+
+enum SetLevel {
+  Beginner
+  Intermediate
+  Advanced
+}
+
+enum Difficulty {
+  Easy
+  Medium
+  Hard
+}
+
+enum PartOfSpeech {
+  Noun
+  Verb
+  Adjective
+  Adverb
+  Pronoun
+  Preposition
+  Conjunction
+  Interjection
+  Article
+}
+
+enum SessionMode {
+  Flashcard
+  Quiz
+  Spelling
+  Listening
+  Matching
+  Recognition
+}
+
+enum PracticeType {
+  Listening
+  Speaking
+  Reading
+  Writing
+  Grammar
+  Vocabulary
+  Pronunciation
+  Conversation
+}
+
+enum ExerciseType {
+  MultipleChoice
+  FillBlank
+  TrueFalse
+  Matching
+  DragDrop
+  Speaking
+  Listening
+  ReadingComprehension
+  WritingPrompt
+  GrammarCorrection
+}
+
+enum PracticeMode {
+  Practice
+  Test
+  Review
+  Challenge
+  Timed
+}
+
+enum AchievementType {
+  Progress
+  Streak
+  Accuracy
+  Time
+  Social
+  Special
+}

@@ -18,10 +18,10 @@ export const LEVELS: Level[] = ['A1', 'A2', 'B1', 'B2', 'C1', 'C2'];
 // 📌 Sidebar Items (for user dashboard)
 export const SIDEBAR_ITEMS = [
   { icon: Home, label: 'Landing Page', href: '/' },
-  { icon: UserPlus, label: 'Login / Register', href: '/login' },
+  { icon: UserPlus, label: 'Login / Register', href: '/sign-in' },
   { icon: BookOpen, label: 'Dashboard Pengguna', href: '/dashboard' },
   { icon: MessageSquare, label: 'Modul Pembelajaran', href: '/dashboard/belajar' },
-  { icon: Edit3, label: 'Cerita', href: '/cerita' },
+  { icon: Edit3, label: 'Cerita', href: '/dashboard/cerita' },
   { icon: Mic, label: 'Chat Latihan AI Voice', href: '/dashboard/chat-ai' },
 ];
 
